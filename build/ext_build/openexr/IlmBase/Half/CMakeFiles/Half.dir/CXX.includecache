@@ -1,0 +1,30 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/half.cpp
+assert.h
+-
+half.h
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/half.h
+toFloat.h
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/toFloat.h
+eLut.h
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/eLut.h
+
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/half.h
+halfExport.h
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/halfExport.h
+iostream
+-
+
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/halfExport.h
+
+ext_build/openexr/IlmBase/Half/eLut.h
+
+ext_build/openexr/IlmBase/Half/toFloat.h
+

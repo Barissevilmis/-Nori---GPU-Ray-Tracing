@@ -1,0 +1,14 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/IlmBase/Half/eLut.cpp
+iostream
+-
+iomanip
+-
+

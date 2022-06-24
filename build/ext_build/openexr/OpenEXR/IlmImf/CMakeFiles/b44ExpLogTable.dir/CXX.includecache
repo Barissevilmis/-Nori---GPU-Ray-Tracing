@@ -1,0 +1,26 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+../ext/openexr/IlmBase/Half/half.h
+halfExport.h
+../ext/openexr/IlmBase/Half/halfExport.h
+iostream
+-
+
+../ext/openexr/IlmBase/Half/halfExport.h
+
+/home/baris/GPURayTracing/cs440-2022-Barissevilmis/ext/openexr/OpenEXR/IlmImf/b44ExpLogTable.cpp
+half.h
+-
+math.h
+-
+iostream
+-
+iomanip
+-
+

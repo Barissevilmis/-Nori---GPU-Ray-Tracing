@@ -1,0 +1,161 @@
+**GPU Ray Tracer with CUDA**
+
+Student name: Baris Sevilmis
+
+Sciper number: 306798
+
+
+
+REQUIREMENTS, HARDWARE SPECIFICATIONS AND MAKEFILE CHANGES
+===========================================================
+
+<p> 
+GPU ray tracer has the aim to keep old CPU parts intact, while making minimal changes.
+First of all, we will start by getting over the hardware and software based requirements,
+whereas we will be going over the changes in CMake file. We will be able to call new GPU executable as before.
+</p>
+<p>
+We start by adding language requirements, by simply modifying the project() at line 2.
+For convenience, we have to set CMAKE_CXX_STANDARD to 17 and set this to be required.
+All CUDA related computation are in kernels folder. These files require to be added into executables.
+We just need to add  ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} to include directories, and therefore set the correct CUDA version with Nvidia Toolkit.
+Our executable will be called norigpu. As we set our CUDA flags, most important one is -rdc=true. We require relocatable devices feature for CUDA to be enabled for our code to be seen as whole.
+We have to link an additional library which is rt cuda. Lastly, we set target properties of  CUDA_SEPARABLE_COMPILATION ON CUDA_RESOLVE_DEVICE_SYMBOLS ON POSITION_INDEPENDENT_CODE ON.
+</p>
+
+<p>
+Lets go over the changes in our code. Unfortunately, CUDA does not support abstract classes, therefore our regular class structure has to change and we might need to manually change some of the modules such as different integrators. 
+However, we do requier this abstraction to some point, since changing classes such as WavefrontObj is not in our prior aims. Therefore, instead of changing our whole abstraction, we will define new kernel classes and distinguish the workload between CPU based and GPU based classes.
+Member functions that we require on GPU interface versus the CPU interfaces will define the function necessities.
+We already know memory transfer between CPU and GPU has to be minimal, in which we do need to transfer data between GPU and CPU only when required, otherwise it will result in performance issues. 
+Before we start identifying changes, lets go over the code that we did not require to change. ImageBlock, GUI, bitmap and parser has not changed at all. Additionally, initialization, addChild() and activate() functions for each class remains the same.
+These methods will be useful to keep our main Nori design structures intact. After we have our regular CPU Nori structure, we start defining our GPU Nori structure. 
+</p>
+
+<p>
+Before beginning to explain the classes, for the sake of conveninence we will be using CUDA_DEV keyword for methods that are being called by GPU with CUDA_DEV keyword and methods that are called 
+both from GPU and CPU with CUDA_HOSTDEV keyword. These keywords correspond to __host__ and __device__ keywords in CUDA and are defined as macros in common file. Firstly, vector and bounding box classes are modified with both CUDA_HOSTDEV keywords, as we will both require them in GPU and CPU. However, we define our Ray class with 
+CUDA_DEV keyword as we require rays only on GPU side of computation.
+</p>
+<p>
+Lets start by identfiying each of our processing units and make know of our GPUs. Our hardware specifications are already mentioned, and since we have 30 multiprocessor units each with 1536 threads, for the sake of convenience we will try leave this 30*1536 as out loose upperbound. Our grids will be defined in 2D, by 12x12 and each of our grid blocks will consist of 
+16x16 threads within each block.We have 12*12*16*16 threads work in parallel and will require to iterate 16 times over our image, whişch is 768x768 to have a complete result. We can simply modify our iteration amount if we have different size images, for example 1024x1024 images. Block and grid sizes are arranged therefore for simple change. We use simple x and y offset values
+for unique thread ids, where each of these offsets are incremented by 12 * 16 for each block switch.
+</p>
+
+<h2> Ray sampling and Perspective Camera</h2>
+<p> 
+After the straightforward declarations, we begin by explaining our Perspective based GPU camera model. Unfortunately due to the reason of abstractization issue, perspective is our first kernel based class that has both CPU and GPU interfaces distinctly. It is not advised to use reference parameters in CUDA, instead pass by value or pointers are advised.
+Since we will have huge GPU memory requirements, our parameters will be mostly defined as pointer based parameters. Parematers are added and deleted dynamically, and base method requirements for abstraction are fulfilled such as addChild(). Our most important function for camera will be sampleRay function. Our ray sampling function will differentiate it self from CPU ray sampling by being called from GPU. In other words,
+we will be creating unique rays for each thread and this will be with help of our thread ids. Since we wont use the block ideology anymore and we require each pixel to have distinct rays, we will build each ray by their distinct thread ids. As our grids and blocks are defined in 2D, our 2D ids are to be enough to identify 2D grids. However, this does not mean we will work on 2D data, 
+rather we will define our data in 1D column major storage format with CSR format by simply (y_size * x_index + y_index) as our unique thread ids. Secondly, as we know 4D matrices may result in issues with CUDA computations, we will simply convert 4D transform matrices to 1D pointers by calling .data() function on Eigen::Matrix4fs. We simply carry our data on GPU with cudaMalloc and cudaMemcpy within our bvh function.
+We will be utilising checkCuda() to check whether out GPU data transforms result in any memory leaks. It is known that 4D matrices might have computational issues, therefore we simply change our matrix computation by their linear algebra foundations.Our destructor will handle all the memory free functionalities
+These rays will be created for each of our unique threads. 
+</p>
+
+<h2>Independent Sampling</h2>
+
+<p>
+Secondly, we will go over our sampling functions, that are replaced by cuRand methods. We will be using MTPG32 for our independent sampling. Since we mainly use our sampling methods for our ray sampling, we will need to define our sampling in CUDA as well. 
+Luckily, we have option to choose between different sampling generators and we can use MTGP32 as in CPU. We will again need to define our Kernel class, and use cuRand based random generators for the specific samplign process. We can simply define our state as curandStateMtgp32_t m_state
+and provide it to our curand_uniform function for our sampling. This will require us to define curandStateMtgp32_t m_state, and optionally thread ids, to be defined. Unofrtunately, it resulted in illegal memory access if we decide to send these states from CPU to GPU, since GPU and CPU based cuRand functions are distunguished from each other.
+We try to stay as close to our CPU based sampling methods within our kernel. Lastly, for sample count, we will simply build a loop around our sampling and rendering functions an repeat these processes by reducing their results into a single result.    
+</p>
+
+<h2> Integrators</h2>
+
+<p>
+Our integrator objects are the most modular part of the class, where we have bunch of different integrators and each could be integrated in a straightforward manor to GPU. For now, we have simple and normal integrators turned into kernel classes for GPU. As before, we create our requested integrator objects with CPU methodology requested from user. 
+We can simply carry necessary parameters with our other set of parameters to GPU kernel, which would be necessary for more complex integrators. We can add integrator kernel classes to our GPU workflow as they are in CPU, however need to identify which kernel to work on before starting rendering. 
+</p>
+
+<h2>Scene</h2>
+
+<p>
+Lets continue with our 4th class-kernel, which is Scene class. Scene class will contaion our Mesh data as well. Since it is problematic to define our MatrixXf and MatrixXd in GPU due to their dynamic sizes, we will simply use Vectors to carry their datas. We do not necessarily need to carry our normals and texture data to GPU, and therefore use if conditions to check for existence of such data.
+We use N_exists and UV_exists dynamic arrays to check for existence of these information for each of our meshes. We define these two arrays as our mesh amount and therefore, could check if normals and texture data exists for each of the meshes.
+We will redefine our Scenekernel assignment operator, in which we will transport our mesh triangle indices and corresponding indices to GPU. We need to priorly carry our vertices, indices and bounding boxes data data to GPU as we use cudaMalloc and cudaMemcpy to carry them over. For simplicity,we use vectors to keep our CPU data and simply use vector.data() to copy these variables to corresponding pointers to GPU.
+checkCuda() will be used again just in case not to miss any additional memory leaks. Finally, we will call our BVH setup function to carry all these data to our data structure for processing. Our destructor will handle all the memory free functionalities as before.
+</p>
+
+<h2> GPU based BVH</h2>
+
+<p>
+Finally, we will talk about BVH tree, which is one of the most important parts of our GPU ray tracing algorithm. Although, we can utilise brute force mesh ray intersection, for large number of triangles it becomes problematic to search large amount of triangles. Brute forcing the intersection search with huge amount of threads does not result in faster results but rather more complications.
+Therefore, we will use BVH tree aproach as in CPU. Luckily, approaches to build such a tree in GPU have been provided by NVIDIA. We can create a balanced BVH data structure with (N-1) internal nodes and N leaf nodes with help of morton codes. Morton codes are an unique way of identifying our triangle data in terms of 3D Z-order curves, where each triangle will have its own id and internal nodes
+to be a way to go thorugh internal nodes to leaf nodes where triangle data is stored. We can tansition between these nodes with help our bounding boxes, where we can check for intersections of rays and bounding boxes. Each leaf node has its own bounding box created simply by our CPU mesh class. Internal nodes are simply merging these neighboring bounding boxes and therefore providing a path to reach corresponding leaf nodes.
+As mentioned before in perspective camera, we do have a huge array for rays as we require each thread to have their own corresponding rays with their unique ids. We will have the same structure for our intersection data as well. Therefore, we can simply use rays and intersection objects as before, just simply providing an unique thread ids to their arrays.
+Building such an BVH tree and searching within this BVH is again ensured by NVIDIA. We sort our data within BVH tree with help of morton codes and corresponding bounding boxes are sorted as well. We have three distinct intersection functions to enable our search within the BVH tree.
+</p>
+
+<p>
+boundingboxIntersect simply checks for intersection of rays with bounding boxes. In case we miss sorting our bounding boxes, it may be very problematic to detect issues as we might still have correct intersections and miss some part of our actual intersections. This function was written as we could not provide our CUDA based indexing methods within our bbox struct, and therefore for sake of convenience, method was carried over to BVH. 
+Method itself is same as our old bounding box ray intersection method. We simply change corresponding mathematical functions to CUDA based math functions and do the same operations. meshIntersect method is again same as well as our old ray intersect method for meshes. We will just update our intersection object for corresponding threads at the end of our function in comparison to before. Lastly, our rayIntersect method for BVH, 
+which is the main method called from our Scenekernel. This method contains our search code within tree as well as our own changes applied after an intersection is found. Provided search code within tree, is again based on NVIDIA blogs such as the tree construction. However, in any case brute force search code has been provided within comments as well. As our rayIntersection functions are completed, we just save our current result into 
+ImageBlock class by our new putResult method, which simply copies all the value results into the coefficients.
+</p>
+
+<p>Current restrictions and issues with code are to be mentioned in the next part.</p>
+
+
+
+<h2> PROBLEMS AND ISSUES</h2>
+
+
+<p>
+Our current algorithm does work quiet fast for our first bunny example, however has issues working on large datasets since carrying huge amounts of data may be problematic. Even in case that we carry data without ant issues, algorithms results so far poorly with huge datasets such as ajax object.
+This issue is going to be fixed on next version of algorithm, where debugging is required, since algorithm works fine on small datasets.
+Another issues is that our kernel classes not being able to reach their member variables, and therefore having huge number of parameters. It might not seem problematic at first, but it feels really inefficient to carry all the necessary data when we start rendering.
+Although, classes such as emitter and bsdf-diffuse are ready to be used, we are unable to utilise these classes due to being unable to work with large datasets. Nevertheless, it is very positive to have a working base version of GPU algorithm.
+
+</p>
+
+<h2> FEATURE WORK</h2>
+<p>
+    Currently, there are many missing features for the GPU algorithm. Nevertheless, there will be incoming fixes in short feature for all the mentioned issues and details.
+    I would like to therefore thank all the patience, and would gladly discuss and talk over any sets of existing or to be implemented features.
+    <ul>
+        <li>Enable GPU algorithm to work on huge datasets.</li>
+        <li>Integrate current existing reconstruction filter, emitter and bsdf classes.</li>
+        <li>Integrate more complex integrator models, as in final sets of homeworks</li>
+        <li>Integrating current sets of tests for GPU.</li>
+        <li>Increasing efficiency of GPU algorithm and making timing comparisons with CPU.</li>
+    </ul>
+</p>
+
+<h2>REFERENCES</h2>
+
+<p>
+   <ul>
+    <li>Wikipedia contributors. (2022, June 12). Z-order curve. Wikipedia. https://en.wikipedia.org/wiki/Z-order_curve</li>
+    <li>Accelerated Ray Tracing in One Weekend in CUDA. (2021, October 29). NVIDIA Technical Blog. https://developer.nvidia.com/blog/accelerated-ray-tracing-cuda/</li>
+    <li>Thinking Parallel, Part III: Tree Construction on the GPU. (2020, August 26). NVIDIA Technical Blog. https://developer.nvidia.com/blog/thinking-parallel-part-ii-tree-construction-gpu/</li>
+    <li>Thinking Parallel, Part III: Tree Construction on the GPU. (2020, August 26). NVIDIA Technical Blog. https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/</li>
+    <li>CUDA Math API :: CUDA Toolkit Documentation. (2005). (C) Copyright 2005. https://docs.nvidia.com/cuda/cuda-math-api/index.html</li>
+    <li>cuRAND :: CUDA Toolkit Documentation. (2005). (C) Copyright 2005. https://docs.nvidia.com/cuda/curand/index.html</li>
+    </ul>
+</p>
+
+
+<div class="twentytwenty-container">
+    <img src="bunny-ref.png" alt="Reference">
+    <img src="bunny.png" alt="Mine">
+</div>
+
+
+LaTeX is also supported:
+$$
+L_o(\mathbf{x}, \omega_o) = \int_{\Omega} L_i(\mathbf{x},\omega_i)\, f(\mathbf{x}, \omega_i, \omega_o)\, |\cos\theta_i|\, \mathrm{d}\omega_i
+$$
+
+
+<!-- Slider -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="../resources/jquery.event.move.js"></script>
+<script src="../resources/jquery.twentytwenty.js"></script>
+<link href="../resources/offcanvas.css" rel="stylesheet">
+<link href="../resources/twentytwenty.css" rel="stylesheet" type="text/css" />
+<script>var markdeepOptions = {onLoad: function() {$(".twentytwenty-container").twentytwenty({default_offset_pct: 0.5, move_slider_on_hover: true});} };</script>
+<!-- Markdeep: -->
+<script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js?" charset="utf-8"></script>
+<script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
